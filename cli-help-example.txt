@@ -1,0 +1,653 @@
+yamaha-xca 1.0.0
+CLI for Yamaha Extended Control API (XCA) / MusicCast receivers
+
+USAGE:
+  yxc [GLOBAL OPTIONS] <command> [COMMAND OPTIONS] [ARGS...]
+
+DESCRIPTION:
+  Interact with Yamaha receivers that expose the Extended Control API over HTTP.
+  By default, requests are GET unless the endpoint requires POST.
+
+  Most endpoints return JSON with:
+    response_code: 0 indicates success, non-zero indicates an error/status.
+
+GLOBAL OPTIONS:
+  -H, --host <host>              Receiver host/IP (e.g. 192.168.1.50) [required unless --base-url]
+      --base-url <url>           Full base URL (default: http://<host>/YamahaExtendedControl)
+      --api-prefix <path>        API prefix (default: /v1)
+      --zone <zone>              Default zone for zone commands: main|zone2|zone3|zone4 (default: main)
+
+      --timeout <duration>       Request timeout (e.g. 2s, 500ms) (default: 5s)
+      --retries <n>              Retry count on transient network errors (default: 0)
+
+      --auth <user:pass>         Basic auth (rare; device dependent)
+      --header <k:v>             Add an HTTP header (repeatable)
+
+      --dry-run                  Print the HTTP request that would be sent, do not send it
+      --curl                     Output an equivalent curl command
+      --format <fmt>             Output: json|pretty|yaml|table (default: pretty)
+      --jq <filter>              Apply jq filter to JSON output (requires jq installed)
+
+  -v, --verbose                  Verbose logging (repeatable: -vv for more)
+  -q, --quiet                    Only print command output (no status lines)
+      --no-color                 Disable ANSI colors
+      --version                  Print version
+  -h, --help                     Print help
+      --help-all                 Print full help including all commands
+
+EXIT CODES:
+  0   Success (response_code == 0, or command succeeded)
+  2   CLI usage error / invalid args
+  3   HTTP/network error (timeout, connection refused, etc.)
+  4   API returned non-zero response_code
+  5   JSON parse/format error
+
+EXAMPLES:
+  # Zone status
+  yxc -H 192.168.1.50 zone status --zone main
+
+  # Power on Zone 2
+  yxc -H 192.168.1.50 zone power on --zone zone2
+
+  # Set volume to 45
+  yxc -H 192.168.1.50 zone volume 45
+
+  # Volume up by 3 steps
+  yxc -H 192.168.1.50 zone volume up --step 3
+
+  # Set input and disable autoplay behavior
+  yxc -H 192.168.1.50 zone input hdmi1 --mode autoplay_disabled
+
+  # Net/USB: list 8 items from index 0 for input "net_radio"
+  yxc -H 192.168.1.50 netusb list --input net_radio --index 0 --size 8
+
+  # Net/USB: search
+  echo '{"string":"Miles Davis"}' | yamaha-xca -H 192.168.1.50 netusb search --list-id main --stdin
+
+  # System reboot (careful)
+  yxc -H 192.168.1.50 system reboot --scope system
+
+COMMANDS:
+  system        System-level controls (dimmer, HDMI outs, party mode, reboot, etc.)
+  zone          Zone controls (power, volume, input, sound, cursor/menu, etc.)
+  tuner         Tuner controls (band, frequency, presets, scans)
+  netusb        Network/USB playback & browsing (playback, list control, presets, recent)
+  cd            CD playback controls
+  clock         Clock/alarm settings
+  dist          MusicCast Link distribution/group controls
+  raw           Call an arbitrary endpoint by path (escape hatch)
+
+Run 'yamaha-xca <command> --help' for command-specific help.
+
+
+SYSTEM COMMANDS
+USAGE:
+  yxc system <subcommand> [OPTIONS]
+
+SUBCOMMANDS:
+  speaker-a           Enable/disable Speaker A output
+  speaker-b           Enable/disable Speaker B output
+  dimmer              Set display dimmer
+  zoneb-volume-sync   Enable/disable Zone B volume synchronization with Zone A
+  hdmi-out            Enable/disable HDMI outputs (1/2)
+  name                Get/set custom name text for inputs/sound programs
+  location            Get MusicCast network location info
+  ir                  Send IR remote code
+  auto-play           Configure auto play behavior
+  speaker-pattern     Set speaker configuration pattern
+  party-mode          Enable/disable party mode
+  reboot              Reboot network module or entire system
+
+system speaker-a
+USAGE:
+  yxc system speaker-a --enable <true|false>
+
+system speaker-b
+USAGE:
+  yxc system speaker-b --enable <true|false>
+
+system dimmer
+USAGE:
+  yxc system dimmer --value <int>
+NOTES:
+  value: -1 for auto, 0+ for manual
+
+system zoneb-volume-sync
+USAGE:
+  yxc system zoneb-volume-sync --enable <true|false>
+
+system hdmi-out
+USAGE:
+  yxc system hdmi-out <1|2> --enable <true|false>
+
+system name
+USAGE:
+  yxc system name get --id <string>
+  yxc system name set --id <string> --text <string>
+OPTIONS:
+      --id <string>           Input or sound program ID
+      --text <string>         New text (max 64 chars for set)
+
+system location
+USAGE:
+  yxc system location
+
+system ir
+USAGE:
+  yxc system ir --code <hex>
+NOTES:
+  code must be hex string as expected by device (no validation beyond hex chars)
+
+system auto-play
+USAGE:
+  yxc system auto-play --enable <true|false>
+
+system speaker-pattern
+USAGE:
+  yxc system speaker-pattern --num <int>
+NOTES:
+  num must be >= 1
+
+system party-mode
+USAGE:
+  yxc system party-mode --enable <true|false>
+
+system reboot
+USAGE:
+  yxc system reboot --scope <network|system>
+
+
+ZONE COMMANDS
+USAGE:
+  yxc zone <subcommand> [OPTIONS]
+
+SUBCOMMANDS:
+  status              Get zone status
+  sound-programs      List available sound programs
+  power               Set zone power (on/standby/toggle)
+  sleep               Set sleep timer (0,30,60,90,120)
+  volume              Set volume, or issue up/down
+  mute                Enable/disable mute
+  input               Set input
+  sound-program       Set sound program
+  surround-3d         Enable/disable 3D surround
+  direct              Enable/disable direct
+  pure-direct         Enable/disable pure direct
+  enhancer            Enable/disable compressed music enhancer
+  tone                Set tone control (mode/bass/treble)
+  eq                  Set equalizer (mode/low/mid/high)
+  balance             Set L/R balance
+  dialogue-level      Set dialogue/vocal enhancement level
+  dialogue-lift       Set dialogue lift height
+  clear-voice         Enable/disable clear voice
+  subwoofer-volume    Set subwoofer volume
+  bass-extension      Enable/disable bass extension
+  signal              Get audio signal info
+  prepare-input       Prepare for input change
+  scene               Recall a scene
+  osd                 Enable/disable on-screen display
+  cursor              Send cursor command (up/down/left/right/select/return)
+  menu                Execute menu command
+  actual-volume       Set volume display mode (db|numeric) and optional value
+  surround-decoder    Set surround decoder type
+  link-control        Set MusicCast Link control mode
+  link-delay          Set MusicCast Link audio delay mode
+  link-quality        Set MusicCast Link audio quality (compressed|uncompressed)
+
+COMMON ZONE OPTION:
+      --zone <zone>   main|zone2|zone3|zone4 (overrides global default)
+
+zone status
+USAGE:
+  yxc zone status [--zone <zone>]
+
+zone sound-programs
+USAGE:
+  yxc zone sound-programs [--zone <zone>]
+
+zone power
+USAGE:
+  yxc zone power <on|standby|toggle> [--zone <zone>]
+
+zone sleep
+USAGE:
+  yxc zone sleep <0|30|60|90|120> [--zone <zone>]
+
+zone volume
+USAGE:
+  yxc zone volume <int> [--zone <zone>]
+  yxc zone volume <up|down> [--step <int>] [--zone <zone>]
+
+zone mute
+USAGE:
+  yxc zone mute --enable <true|false> [--zone <zone>]
+
+zone input
+USAGE:
+  yxc zone input <input-id> [--mode autoplay_disabled] [--zone <zone>]
+
+zone sound-program
+USAGE:
+  yxc zone sound-program <program-id> [--zone <zone>]
+
+zone surround-3d
+USAGE:
+  yxc zone surround-3d --enable <true|false> [--zone <zone>]
+
+zone direct
+USAGE:
+  yxc zone direct --enable <true|false> [--zone <zone>]
+
+zone pure-direct
+USAGE:
+  yxc zone pure-direct --enable <true|false> [--zone <zone>]
+
+zone enhancer
+USAGE:
+  yxc zone enhancer --enable <true|false> [--zone <zone>]
+
+zone tone
+USAGE:
+  yxc zone tone [--mode <manual|auto|bypass>] [--bass <int>] [--treble <int>] [--zone <zone>]
+NOTES:
+  Any omitted parameter is not sent.
+
+zone eq
+USAGE:
+  yxc zone eq [--mode <manual|auto|bypass>] [--low <int>] [--mid <int>] [--high <int>] [--zone <zone>]
+NOTES:
+  Any omitted parameter is not sent.
+
+zone balance
+USAGE:
+  yxc zone balance --value <int> [--zone <zone>]
+NOTES:
+  Negative = left, positive = right
+
+zone dialogue-level
+USAGE:
+  yxc zone dialogue-level --value <int> [--zone <zone>]
+
+zone dialogue-lift
+USAGE:
+  yxc zone dialogue-lift --value <int> [--zone <zone>]
+
+zone clear-voice
+USAGE:
+  yxc zone clear-voice --enable <true|false> [--zone <zone>]
+
+zone subwoofer-volume
+USAGE:
+  yxc zone subwoofer-volume --volume <int> [--zone <zone>]
+
+zone bass-extension
+USAGE:
+  yxc zone bass-extension --enable <true|false> [--zone <zone>]
+
+zone signal
+USAGE:
+  yxc zone signal [--zone <zone>]
+
+zone prepare-input
+USAGE:
+  yxc zone prepare-input --input <input-id> [--zone <zone>]
+
+zone scene
+USAGE:
+  yxc zone scene --num <int> [--zone <zone>]
+
+zone osd
+USAGE:
+  yxc zone osd --enable <true|false> [--zone <zone>]
+
+zone cursor
+USAGE:
+  yxc zone cursor <up|down|left|right|select|return> [--zone <zone>]
+
+zone menu
+USAGE:
+  yxc zone menu <on_screen|top_menu|menu|option|display|help|home|mode|red|green|yellow|blue> [--zone <zone>]
+
+zone actual-volume
+USAGE:
+  yxc zone actual-volume --mode <db|numeric> [--value <number>] [--zone <zone>]
+
+zone surround-decoder
+USAGE:
+  yxc zone surround-decoder --type <type> [--zone <zone>]
+TYPES:
+  toggle, auto, dolby_pl, dolby_pl2x_movie, dolby_pl2x_music, dolby_pl2x_game,
+  dolby_surround, dts_neural_x, dts_neo6_cinema, dts_neo6_music
+
+zone link-control
+USAGE:
+  yxc zone link-control --control <standard|stability|speed> [--zone <zone>]
+
+zone link-delay
+USAGE:
+  yxc zone link-delay --delay <lip_sync|audio_sync|audio_sync_on|audio_sync_off|balanced> [--zone <zone>]
+
+zone link-quality
+USAGE:
+  yxc zone link-quality --quality <compressed|uncompressed> [--zone <zone>]
+
+
+TUNER COMMANDS
+USAGE:
+  yxc tuner <subcommand> [OPTIONS]
+
+SUBCOMMANDS:
+  preset-info         Get preset info (common/am/fm/dab)
+  play-info           Get current tuner play info
+  band                Set band (am/fm/dab)
+  freq                Set frequency / scan
+  recall              Recall preset
+  switch              Next/previous preset
+  store               Store current station to preset
+  clear               Clear preset
+  auto-preset         Start/cancel automatic preset scan (FM)
+  dab-scan            Start/cancel DAB initial scan
+  dab-service         Next/previous DAB service
+
+tuner preset-info
+USAGE:
+  yxc tuner preset-info --band <common|am|fm|dab>
+
+tuner play-info
+USAGE:
+  yxc tuner play-info
+
+tuner band
+USAGE:
+  yxc tuner band <am|fm|dab>
+
+tuner freq
+USAGE:
+  yxc tuner freq --band <am|fm> --tuning <tp_up|tp_down|direct|auto_up|auto_down|cancel> [--num <kHz>]
+NOTES:
+  --num is only used for direct tuning.
+
+tuner recall
+USAGE:
+  yxc tuner recall --zone <main|zone2|zone3|zone4> --band <common|am|fm|dab> --num <int>
+
+tuner switch
+USAGE:
+  yxc tuner switch --dir <next|previous>
+
+tuner store
+USAGE:
+  yxc tuner store --num <int>
+
+tuner clear
+USAGE:
+  yxc tuner clear --band <common|am|fm|dab> --num <int>
+
+tuner auto-preset
+USAGE:
+  yxc tuner auto-preset start
+  yxc tuner auto-preset cancel
+
+tuner dab-scan
+USAGE:
+  yxc tuner dab-scan start
+  yxc tuner dab-scan cancel
+
+tuner dab-service
+USAGE:
+  yxc tuner dab-service --dir <next|previous>
+
+
+NETUSB COMMANDS
+USAGE:
+  yxc netusb <subcommand> [OPTIONS]
+
+SUBCOMMANDS:
+  preset-info         Get Net/USB preset info
+  play-info           Get current Net/USB play info
+  playback            Control playback state
+  seek                Set play position (seconds)
+  repeat              Set repeat mode
+  shuffle             Set shuffle mode
+  repeat-toggle       Toggle repeat mode
+  shuffle-toggle      Toggle shuffle mode
+  list                Get browsable list info
+  list-control        Navigate/select/play in list
+  search              POST search string (JSON body)
+  preset              Recall/store/clear/move presets
+  recent              Get/recall/clear recently played
+  settings            Get streaming service settings
+  quality             Set streaming quality
+  account-status      Get account status
+  service-info        Get service-specific info
+
+netusb preset-info
+USAGE:
+  yxc netusb preset-info
+
+netusb play-info
+USAGE:
+  yxc netusb play-info
+
+netusb playback
+USAGE:
+  yxc netusb playback <play|stop|pause|play_pause|previous|next|fast_reverse_start|fast_reverse_end|fast_forward_start|fast_forward_end>
+
+netusb seek
+USAGE:
+  yxc netusb seek --position <seconds>
+
+netusb repeat
+USAGE:
+  yxc netusb repeat <off|one|all>
+
+netusb shuffle
+USAGE:
+  yxc netusb shuffle <off|on|songs|albums>
+
+netusb repeat-toggle
+USAGE:
+  yxc netusb repeat-toggle
+
+netusb shuffle-toggle
+USAGE:
+  yxc netusb shuffle-toggle
+
+netusb list
+USAGE:
+  yxc netusb list --input <input-id> [--index <int>] [--size <1-8>] [--lang <code>]
+DEFAULTS:
+  --index 0
+  --size  8
+
+netusb list-control
+USAGE:
+  yxc netusb list-control --type <select|play|return> [--index <int>] [--list-id <main|auto_complete|search_artist|search_track>] [--zone <main|zone2|zone3|zone4>]
+NOTES:
+  --index is required for select/play.
+
+netusb search
+USAGE:
+  yxc netusb search [--list-id <main>] --string <text>
+  yxc netusb search [--list-id <main>] --stdin
+OPTIONS:
+      --list-id <id>         main|auto_complete|search_artist|search_track (default: main)
+      --string <text>        Search query string
+      --stdin                Read JSON body from stdin instead of building it
+
+netusb preset
+USAGE:
+  yxc netusb preset recall --zone <main|zone2|zone3|zone4> --num <int>
+  yxc netusb preset store --num <int>
+  yxc netusb preset clear --num <int>
+  yxc netusb preset move --from <int> --to <int>
+
+netusb recent
+USAGE:
+  yxc netusb recent get
+  yxc netusb recent recall --zone <main|zone2|zone3|zone4> --num <int>
+  yxc netusb recent clear
+
+netusb settings
+USAGE:
+  yxc netusb settings
+
+netusb quality
+USAGE:
+  yxc netusb quality --input <input-id> --value <string>
+
+netusb account-status
+USAGE:
+  yxc netusb account-status
+
+netusb service-info
+USAGE:
+  yxc netusb service-info --input <input-id> [--type <string>]
+
+
+CD COMMANDS
+USAGE:
+  yxc cd <subcommand> [OPTIONS]
+
+SUBCOMMANDS:
+  play-info            Get CD play info
+  playback             Control CD playback
+  tray                 Toggle CD tray
+  repeat               Set CD repeat
+  shuffle              Set CD shuffle
+  repeat-toggle        Toggle CD repeat
+  shuffle-toggle       Toggle CD shuffle
+  direct               Enable/disable direct CD playback
+
+cd play-info
+USAGE:
+  yxc cd play-info
+
+cd playback
+USAGE:
+  yxc cd playback <play|stop|pause|previous|next|fast_reverse_start|fast_reverse_end|fast_forward_start|fast_forward_end|track_select> [--num <track>]
+
+cd tray
+USAGE:
+  yxc cd tray toggle
+
+cd repeat
+USAGE:
+  yxc cd repeat <off|one|all|folder|a-b>
+
+cd shuffle
+USAGE:
+  yxc cd shuffle <off|on|folder|program>
+
+cd repeat-toggle
+USAGE:
+  yxc cd repeat-toggle
+
+cd shuffle-toggle
+USAGE:
+  yxc cd shuffle-toggle
+
+cd direct
+USAGE:
+  yxc cd direct --enable <true|false>
+
+
+CLOCK COMMANDS
+USAGE:
+  yxc clock <subcommand> [OPTIONS]
+
+SUBCOMMANDS:
+  settings            Get clock & alarm settings
+  auto-sync           Enable/disable auto sync
+  datetime            Set date/time (YYMMDDhhmmss)
+  format              Set clock format (12h|24h)
+  alarm               Configure alarm settings (POST JSON)
+
+clock settings
+USAGE:
+  yxc clock settings
+
+clock auto-sync
+USAGE:
+  yxc clock auto-sync --enable <true|false>
+
+clock datetime
+USAGE:
+  yxc clock datetime --date-time <YYMMDDhhmmss>
+
+clock format
+USAGE:
+  yxc clock format <12h|24h>
+
+clock alarm
+USAGE:
+  yxc clock alarm --file <alarm.json>
+  yxc clock alarm --stdin
+NOTES:
+  alarm.json must match the AlarmSettings schema used by /v1/clock/setAlarmSettings.
+
+
+DISTRIBUTION (LINK) COMMANDS
+USAGE:
+  yxc dist <subcommand> [OPTIONS]
+
+SUBCOMMANDS:
+  info                Get distribution info
+  server              Configure device as Link server (POST JSON)
+  client              Configure device as Link client (POST JSON)
+  start               Start distribution
+  stop                Stop distribution
+  group-name          Set group name (POST JSON)
+
+dist info
+USAGE:
+  yxc dist info
+
+dist server
+USAGE:
+  yxc dist server --file <server.json>
+  yxc dist server --stdin
+
+dist client
+USAGE:
+  yxc dist client --file <client.json>
+  yxc dist client --stdin
+
+dist start
+USAGE:
+  yxc dist start --num <int>
+
+dist stop
+USAGE:
+  yxc dist stop
+
+dist group-name
+USAGE:
+  yxc dist group-name --name <string>
+  yxc dist group-name --stdin
+
+
+RAW COMMAND
+USAGE:
+  yxc raw <METHOD> <PATH> [--query <k=v>]... [--data <json>] [--stdin]
+
+EXAMPLES:
+  yxc -H 192.168.1.50 raw GET /v1/main/getStatus
+  yxc -H 192.168.1.50 raw GET /v1/system/getLocationInfo
+  yxc -H 192.168.1.50 raw POST /v1/netusb/setSearchString --data '{"list_id":"main","string":"Radiohead"}'
+
+NOTES:
+  PATH may be absolute (/v1/...) or relative (system/getLocationInfo).
+  When --stdin is used, request body is read from STDIN.
+
+RESPONSE CODES (response_code):
+  0       Successful request
+  1       Initializing
+  2       Internal Error
+  3       Invalid Request
+  4       Invalid Parameter
+  5       Guarded
+  6       Time Out
+  99      Firmware Updating
+  100-115 Streaming service errors
+  200-201 Distribution errors
