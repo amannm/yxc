@@ -1,6 +1,5 @@
 # Project objectives
-- A collection of utilities for generating local GitHub-flavored Markdown documentation from official public sources.
-- Each utility custom-tailored and optimized for a particular source.
+- A collection of utilities for remote management of home devices
 
 # Environment
 - `uv` for executing Python scripts.
